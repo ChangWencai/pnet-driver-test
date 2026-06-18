@@ -46,9 +46,27 @@ set(APP_INCLUDES
 if(USE_REAL_PNET AND PLATFORM_LINUX)
     message(STATUS "Using real p-net stack from vendor/p-net")
     add_compile_definitions(USE_REAL_PNET)
+
+    # Generate pnet_export.h (not shipped in the evaluation submodule)
+    set(PNET_EXPORT_H "${CMAKE_CURRENT_BINARY_DIR}/pnet_export.h")
+    file(WRITE "${PNET_EXPORT_H}"
+        "#ifndef PNET_EXPORT_H\n"
+        "#define PNET_EXPORT_H\n"
+        "\n"
+        "#define PNET_EXPORT\n"
+        "#define PNET_NO_EXPORT\n"
+        "#define PNET_DEPRECATED\n"
+        "#define PNET_DEPRECATED_EXPORT\n"
+        "#define PNET_DEPRECATED_NO_EXPORT\n"
+        "#define PNET_DECL_EXPORT\n"
+        "\n"
+        "#endif /* PNET_EXPORT_H */\n"
+    )
+
     list(APPEND APP_INCLUDES
         ${CMAKE_SOURCE_DIR}/vendor/p-net/include
         ${CMAKE_SOURCE_DIR}/vendor/p-net/src
+        ${CMAKE_CURRENT_BINARY_DIR}
     )
     # In production, p-net is compiled as a static library
     # For now we just reference headers and link manually
@@ -90,12 +108,22 @@ if(BUILD_TESTS)
         tests/mock/pnet_api_mock.c
     )
 
-    add_executable(pnet-tests ${TEST_SOURCES} ${APP_SOURCES})
-    target_include_directories(pnet-tests PRIVATE
+    set(TEST_INCLUDES
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/tests/mock
     )
+
+    if(USE_REAL_PNET AND PLATFORM_LINUX)
+        list(APPEND TEST_INCLUDES
+            ${CMAKE_SOURCE_DIR}/vendor/p-net/include
+            ${CMAKE_SOURCE_DIR}/vendor/p-net/src
+            ${CMAKE_CURRENT_BINARY_DIR}
+        )
+    endif()
+
+    add_executable(pnet-tests ${TEST_SOURCES} ${APP_SOURCES})
+    target_include_directories(pnet-tests PRIVATE ${TEST_INCLUDES})
     target_link_libraries(pnet-tests m)
     target_compile_definitions(pnet-tests PRIVATE TESTING)
 
