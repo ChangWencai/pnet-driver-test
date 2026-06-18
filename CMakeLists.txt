@@ -148,23 +148,11 @@ if(USE_REAL_PNET AND PLATFORM_LINUX)
         message(STATUS "Found p-net library: ${PNET_LIB}")
         set(PNET_LINK_LIBS ${PNET_LIB})
     else()
-        message(WARNING "p-net library not found. Build it first with: ./scripts/build_pnet.sh")
-        message(WARNING "Falling back to compiling p-net sources directly...")
-
-        # Collect p-net source files (excluding driver-specific and test files)
-        file(GLOB PNET_COMMON_SRCS "${CMAKE_SOURCE_DIR}/vendor/p-net/src/common/*.c")
-        file(GLOB PNET_DEVICE_SRCS "${CMAKE_SOURCE_DIR}/vendor/p-net/src/device/*.c")
-        list(APPEND APP_SOURCES ${PNET_COMMON_SRCS} ${PNET_DEVICE_SRCS})
-
-        # OSAL Linux sources (if available)
-        set(OSAL_DIR "${CMAKE_SOURCE_DIR}/vendor/p-net/osal")
-        if(EXISTS "${OSAL_DIR}")
-            file(GLOB OSAL_SRCS "${OSAL_DIR}/src/linux/*.c" "${OSAL_DIR}/src/osal.c")
-            list(APPEND APP_SOURCES ${OSAL_SRCS})
-            list(APPEND APP_INCLUDES "${OSAL_DIR}/include" "${OSAL_DIR}/src/linux")
-        endif()
-
-        list(APPEND PNET_LINK_LIBS pthread)
+        message(FATAL_ERROR
+            "p-net library not found.\n"
+            "  Build it first with:  ./scripts/build_pnet.sh\n"
+            "  Or use the mock API:  cmake -DUSE_REAL_PNET=OFF"
+        )
     endif()
 else()
     message(STATUS "Using mock p-net API (testing mode)")
@@ -213,11 +201,13 @@ if(BUILD_TESTS)
             ${CMAKE_SOURCE_DIR}/include
             ${CMAKE_CURRENT_BINARY_DIR}
         )
-        target_link_libraries(pnet-tests pthread)
     endif()
 
     add_executable(pnet-tests ${TEST_SOURCES} ${APP_SOURCES})
     target_include_directories(pnet-tests PRIVATE ${TEST_INCLUDES})
+    if(USE_REAL_PNET AND PLATFORM_LINUX)
+        target_link_libraries(pnet-tests pthread)
+    endif()
     target_link_libraries(pnet-tests m)
     target_compile_definitions(pnet-tests PRIVATE TESTING)
 

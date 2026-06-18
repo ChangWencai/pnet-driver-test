@@ -9,6 +9,8 @@
 
 #include "rt_setup.h"
 
+#define _GNU_SOURCE
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>

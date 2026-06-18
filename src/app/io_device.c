@@ -15,6 +15,8 @@
 #include <string.h>
 
 #ifdef USE_REAL_PNET
+#include "pnal_sys.h"
+#include "pnal.h"
 #include "pnet_api.h"
 #else
 #include "pnet_api_mock.h"
