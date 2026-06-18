@@ -125,13 +125,46 @@ if(USE_REAL_PNET AND PLATFORM_LINUX)
     list(APPEND APP_INCLUDES
         ${CMAKE_SOURCE_DIR}/vendor/p-net/include
         ${CMAKE_SOURCE_DIR}/vendor/p-net/src
-        ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_SOURCE_DIR}/include           # pnal_config.h lives here
+        ${CMAKE_CURRENT_BINARY_DIR}           # generated pnet_options.h etc.
     )
-    # In production, p-net is compiled as a static library
-    # For now we just reference headers and link manually
+
+    # Link against pre-built p-net static library
+    # Build it first with: ./scripts/build_pnet.sh
+    set(PNET_BUILD_DIR "${CMAKE_SOURCE_DIR}/vendor/p-net/build")
     set(PNET_LINK_LIBS "")
-    if(EXISTS "${CMAKE_SOURCE_DIR}/vendor/p-net/build/libpnet.a")
-        set(PNET_LINK_LIBS "${CMAKE_SOURCE_DIR}/vendor/p-net/build/libpnet.a")
+
+    # Look for p-net library in common locations
+    find_library(PNET_LIB
+        NAMES pnet
+        PATHS
+            "${PNET_BUILD_DIR}"
+            "${PNET_BUILD_DIR}/src"
+            "/usr/local/lib"
+        NO_DEFAULT_PATH
+    )
+
+    if(PNET_LIB)
+        message(STATUS "Found p-net library: ${PNET_LIB}")
+        set(PNET_LINK_LIBS ${PNET_LIB})
+    else()
+        message(WARNING "p-net library not found. Build it first with: ./scripts/build_pnet.sh")
+        message(WARNING "Falling back to compiling p-net sources directly...")
+
+        # Collect p-net source files (excluding driver-specific and test files)
+        file(GLOB PNET_COMMON_SRCS "${CMAKE_SOURCE_DIR}/vendor/p-net/src/common/*.c")
+        file(GLOB PNET_DEVICE_SRCS "${CMAKE_SOURCE_DIR}/vendor/p-net/src/device/*.c")
+        list(APPEND APP_SOURCES ${PNET_COMMON_SRCS} ${PNET_DEVICE_SRCS})
+
+        # OSAL Linux sources (if available)
+        set(OSAL_DIR "${CMAKE_SOURCE_DIR}/vendor/p-net/osal")
+        if(EXISTS "${OSAL_DIR}")
+            file(GLOB OSAL_SRCS "${OSAL_DIR}/src/linux/*.c" "${OSAL_DIR}/src/osal.c")
+            list(APPEND APP_SOURCES ${OSAL_SRCS})
+            list(APPEND APP_INCLUDES "${OSAL_DIR}/include" "${OSAL_DIR}/src/linux")
+        endif()
+
+        list(APPEND PNET_LINK_LIBS pthread)
     endif()
 else()
     message(STATUS "Using mock p-net API (testing mode)")
@@ -177,8 +210,10 @@ if(BUILD_TESTS)
         list(APPEND TEST_INCLUDES
             ${CMAKE_SOURCE_DIR}/vendor/p-net/include
             ${CMAKE_SOURCE_DIR}/vendor/p-net/src
+            ${CMAKE_SOURCE_DIR}/include
             ${CMAKE_CURRENT_BINARY_DIR}
         )
+        target_link_libraries(pnet-tests pthread)
     endif()
 
     add_executable(pnet-tests ${TEST_SOURCES} ${APP_SOURCES})
