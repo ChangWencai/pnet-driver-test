@@ -47,7 +47,7 @@ if(USE_REAL_PNET AND PLATFORM_LINUX)
     message(STATUS "Using real p-net stack from vendor/p-net")
     add_compile_definitions(USE_REAL_PNET)
 
-    # Generate pnet_export.h (not shipped in the evaluation submodule)
+    # Generate headers from templates (evaluation submodule ships .in files)
     set(PNET_EXPORT_H "${CMAKE_CURRENT_BINARY_DIR}/pnet_export.h")
     file(WRITE "${PNET_EXPORT_H}"
         "#ifndef PNET_EXPORT_H\n"
@@ -61,6 +61,65 @@ if(USE_REAL_PNET AND PLATFORM_LINUX)
         "#define PNET_DECL_EXPORT\n"
         "\n"
         "#endif /* PNET_EXPORT_H */\n"
+    )
+
+    # pnet_options.h defaults
+    set(PNET_OPTION_FAST_STARTUP OFF)
+    set(PNET_OPTION_PARAMETER_SERVER OFF)
+    set(PNET_OPTION_IR OFF)
+    set(PNET_OPTION_SR OFF)
+    set(PNET_OPTION_REDUNDANCY OFF)
+    set(PNET_OPTION_AR_VENDOR_BLOCKS OFF)
+    set(PNET_OPTION_RS OFF)
+    set(PNET_OPTION_MC_CR OFF)
+    set(PNET_OPTION_SRL OFF)
+    set(PNET_OPTION_SNMP OFF)
+    set(PNET_OPTION_DRIVER_ENABLE OFF)
+    set(PNET_USE_ATOMICS ON)
+    set(PNET_MAX_AR 2)
+    set(PNET_MAX_API 1)
+    set(PNET_MAX_CR 2)
+    set(PNET_MAX_SLOTS 4)
+    set(PNET_MAX_SUBSLOTS 8)
+    set(PNET_MAX_DFP_IOCR 0)
+    set(PNET_MAX_PHYSICAL_PORTS 1)
+    set(PNET_MAX_LOG_BOOK_ENTRIES 10)
+    set(PNET_MAX_ALARMS 4)
+    set(PNET_MAX_ALARM_PAYLOAD_DATA_SIZE 200)
+    set(PNET_MAX_DIAG_ITEMS 100)
+    set(PNET_MAX_DIAG_MANUF_DATA_SIZE 200)
+    set(PNET_MAX_MC_CR 1)
+    set(PNET_MAX_AR_VENDOR_BLOCKS 1)
+    set(PNET_MAX_AR_VENDOR_BLOCK_DATA_LENGTH 100)
+    set(PNET_MAX_MAN_SPECIFIC_FAST_STARTUP_DATA_LENGTH 512)
+    set(PNET_MAX_SESSION_BUFFER_SIZE 4096)
+    set(PNET_MAX_DIRECTORYPATH_SIZE 128)
+    set(PNET_MAX_FILENAME_SIZE 64)
+    set(PNET_MAX_PORT_DESCRIPTION_SIZE 64)
+    set(LOG_LEVEL WARNING)
+    set(PF_ETH_LOG DEFAULT)
+    set(PF_LLDP_LOG DEFAULT)
+    set(PF_SNMP_LOG DEFAULT)
+    set(PF_CPM_LOG DEFAULT)
+    set(PF_PPM_LOG DEFAULT)
+    set(PF_DCP_LOG DEFAULT)
+    set(PF_RPC_LOG DEFAULT)
+    set(PF_ALARM_LOG DEFAULT)
+    set(PF_AL_BUF_LOG DEFAULT)
+    set(PF_PNAL_LOG DEFAULT)
+    set(PNET_LOG DEFAULT)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/vendor/p-net/pnet_options.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/pnet_options.h"
+    )
+
+    # pnet_version.h defaults
+    set(PNET_VERSION_MAJOR 1)
+    set(PNET_VERSION_MINOR 0)
+    set(PNET_VERSION_PATCH 2)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/vendor/p-net/pnet_version.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/pnet_version.h"
     )
 
     list(APPEND APP_INCLUDES
