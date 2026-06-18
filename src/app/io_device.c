@@ -62,8 +62,10 @@ static void safe_strncpy(char *dst, const char *src, size_t dst_size)
 {
     if (dst_size == 0)
         return;
-    strncpy(dst, src, dst_size - 1);
-    dst[dst_size - 1] = '\0';
+    size_t srclen = strlen(src);
+    size_t copy = srclen < dst_size - 1 ? srclen : dst_size - 1;
+    memcpy(dst, src, copy);
+    dst[copy] = '\0';
 }
 
 /* ======================================================================

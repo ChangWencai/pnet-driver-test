@@ -48,26 +48,28 @@ extern test_result_t g_test_result;
 #define TEST_FAIL(msg)  do { g_test_result.failed++; printf(COLOR_RED "FAIL" COLOR_RESET " - %s\n", msg); return; } while (0)
 #define TEST_SKIP(msg)  do { g_test_result.skipped++; printf(COLOR_YELLOW "SKIP" COLOR_RESET " - %s\n", msg); return; } while (0)
 
+#define ASSERT_BUF_SIZE 1024
+
 #define ASSERT_TRUE(expr) \
-    do { if (!(expr)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_TRUE(%s) line %d", #expr, __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if (!(expr)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_TRUE(%s) line %d", #expr, __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_FALSE(expr) \
-    do { if ((expr)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_FALSE(%s) line %d", #expr, __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((expr)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_FALSE(%s) line %d", #expr, __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_EQ(a, b) \
-    do { if ((long)(a) != (long)(b)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_EQ: %ld != %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((long)(a) != (long)(b)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_EQ: %ld != %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_NE(a, b) \
-    do { if ((long)(a) == (long)(b)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_NE: %ld == %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((long)(a) == (long)(b)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_NE: %ld == %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_STR_EQ(a, b) \
-    do { if (strcmp((a),(b)) != 0) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_STR_EQ: \"%s\" != \"%s\" line %d", (a), (b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if (strcmp((a),(b)) != 0) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_STR_EQ: \"%s\" != \"%s\" line %d", (a), (b), __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_NOT_NULL(p) \
-    do { if ((p) == NULL) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_NOT_NULL(%s) line %d", #p, __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((p) == NULL) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_NOT_NULL(%s) line %d", #p, __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_NULL(p) \
-    do { if ((p) != NULL) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_NULL(%s) line %d", #p, __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((p) != NULL) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_NULL(%s) line %d", #p, __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_GE(a, b) \
-    do { if ((long)(a) < (long)(b)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_GE: %ld < %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((long)(a) < (long)(b)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_GE: %ld < %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_GT(a, b) \
-    do { if ((long)(a) <= (long)(b)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_GT: %ld <= %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((long)(a) <= (long)(b)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_GT: %ld <= %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
 #define ASSERT_LE(a, b) \
-    do { if ((long)(a) > (long)(b)) { char _m[256]; snprintf(_m, sizeof(_m), "ASSERT_LE: %ld > %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
+    do { if ((long)(a) > (long)(b)) { char _m[ASSERT_BUF_SIZE]; snprintf(_m, sizeof(_m), "ASSERT_LE: %ld > %ld line %d", (long)(a), (long)(b), __LINE__); TEST_FAIL(_m); } } while (0)
 
 static inline void test_print_summary(void) {
     printf("\n" COLOR_BLUE "========================================" COLOR_RESET "\n");

@@ -10,6 +10,14 @@ option(BUILD_TESTS "Build test suite" ON)
 
 # Compiler flags
 add_compile_options(-Wall -Wextra -Wpedantic)
+
+# Suppress false positives:
+#   -Wstringop-truncation: our safe_strncpy uses snprintf/memcpy correctly
+#   -Wformat-truncation: test framework buffer is sized for max message
+if(NOT APPLE)
+    add_compile_options(-Wno-stringop-truncation -Wno-format-truncation)
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g -O0)
     # ASan disabled on macOS due to compatibility issues
@@ -170,9 +178,24 @@ add_library(pnet_manager_lib STATIC ${APP_SOURCES})
 target_include_directories(pnet_manager_lib PUBLIC ${APP_INCLUDES})
 target_link_libraries(pnet_manager_lib ${PNET_LINK_LIBS} m)
 
+# === Optional: systemd watchdog support ===
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SYSTEMD systemd QUIET IMPORTED_TARGET)
+endif()
+if(SYSTEMD_FOUND)
+    message(STATUS "systemd watchdog: enabled")
+    add_compile_definitions(HAVE_SYSTEMD)
+else()
+    message(STATUS "systemd watchdog: not found (disabled)")
+endif()
+
 # === Main executable ===
 add_executable(pnet-manager src/main.c)
 target_link_libraries(pnet-manager pnet_manager_lib)
+if(SYSTEMD_FOUND)
+    target_link_libraries(pnet-manager PkgConfig::SYSTEMD)
+endif()
 
 # === Tests ===
 if(BUILD_TESTS)

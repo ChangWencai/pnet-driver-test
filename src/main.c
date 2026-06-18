@@ -1,15 +1,10 @@
 /**
  * main.c - p-net IO Device Manager Entry Point
  *
- * Orchestrates the lifecycle of a Profinet IO Device:
- *   1. Parse command-line arguments
- *   2. Load (or default) application configuration
- *   3. Apply network, security, and real-time settings
- *   4. Initialise and run the IO device main loop
- *   5. Graceful shutdown on SIGINT / SIGTERM
- *
- * Works on real Linux targets and in mock/simulation mode on
- * other platforms (network and RT calls are guarded).
+ * 7×24 production entry point with:
+ *   - Signal-based graceful shutdown
+ *   - systemd watchdog notification (optional)
+ *   - Automatic device recovery with exponential backoff
  */
 
 #include "app_config.h"
@@ -24,13 +19,28 @@
 #include <signal.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <time.h>
+#include <stdarg.h>
+
+#ifdef HAVE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
 
 /* ------------------------------------------------------------------ */
 /*  Version & defaults                                                */
 /* ------------------------------------------------------------------ */
 
-#define PNET_MGR_VERSION   "1.0.0"
-#define DEFAULT_CONFIG_FILE "/etc/pnet-manager/config.conf"
+#define PNET_MGR_VERSION     "1.0.1"
+#define DEFAULT_CONFIG_FILE  "/etc/pnet-manager/config.conf"
+
+/* Recovery constants */
+#define MAX_CONSECUTIVE_ERRORS  5
+#define RECOVERY_BACKOFF_BASE   1000000    /* 1 second in us */
+#define RECOVERY_BACKOFF_MAX    30000000   /* 30 seconds in us */
+#define MAX_RECOVERY_ATTEMPTS   0          /* 0 = unlimited */
+
+/* Watchdog: systemd expects a ping every WatchdogSec/2 */
+#define WATCHDOG_PING_MS       15000       /* 15 seconds */
 
 /* ------------------------------------------------------------------ */
 /*  Signal handling                                                   */
@@ -60,6 +70,7 @@ static int install_signal_handlers(void)
         perror("sigaction(SIGTERM)");
         return -1;
     }
+    /* Also handle SIGHUP for config reload (reserved for future use) */
     return 0;
 }
 
@@ -67,10 +78,6 @@ static int install_signal_handlers(void)
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-/**
- * Format a uint32_t IP (network byte order) into dotted-quad string.
- * Local copy so we don't depend on network_config at banner time.
- */
 static void ip_to_str(uint32_t ip, char *buf, size_t len)
 {
     snprintf(buf, len, "%u.%u.%u.%u",
@@ -129,14 +136,42 @@ static void print_usage(const char *prog)
 }
 
 /* ------------------------------------------------------------------ */
+/*  systemd watchdog                                                  */
+/* ------------------------------------------------------------------ */
+
+#ifdef HAVE_SYSTEMD
+static void watchdog_notify(void)
+{
+    sd_notify(0, "WATCHDOG=1");
+}
+static void watchdog_notify_stopping(void)
+{
+    sd_notify(0, "STOPPING=1");
+}
+static void watchdog_notify_ready(void)
+{
+    sd_notify(0, "READY=1");
+}
+static void watchdog_notify_status(const char *fmt, ...)
+{
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    sd_notifyf(0, "STATUS=%s", buf);
+}
+#else
+static void watchdog_notify(void)            { (void)0; }
+static void watchdog_notify_stopping(void)   { (void)0; }
+static void watchdog_notify_ready(void)      { (void)0; }
+static void watchdog_notify_status(const char *fmt, ...) { (void)fmt; }
+#endif
+
+/* ------------------------------------------------------------------ */
 /*  Apply subsystem configurations                                    */
 /* ------------------------------------------------------------------ */
 
-/**
- * Apply network interface settings.
- * On non-Linux platforms this is a no-op (the functions are not
- * available, so we guard with __linux__).
- */
 static int apply_network(const app_config_t *cfg)
 {
 #ifdef __linux__
@@ -148,17 +183,14 @@ static int apply_network(const app_config_t *cfg)
         fprintf(stderr, "[net] Failed to set IP address on %s\n", iface);
         return -1;
     }
-
     if (net_if_set_netmask(iface, cfg->network.netmask) < 0) {
         fprintf(stderr, "[net] Failed to set netmask on %s\n", iface);
         return -1;
     }
-
     if (net_if_set_up(iface) < 0) {
         fprintf(stderr, "[net] Failed to bring up %s\n", iface);
         return -1;
     }
-
     printf("[net] Interface %s configured successfully\n", iface);
 #else
     printf("[net] Skipping network configuration (non-Linux platform)\n");
@@ -167,9 +199,6 @@ static int apply_network(const app_config_t *cfg)
     return 0;
 }
 
-/**
- * Apply security policy if enabled.
- */
 static int apply_security(const app_config_t *cfg)
 {
     if (!cfg->security_enabled) {
@@ -184,15 +213,10 @@ static int apply_security(const app_config_t *cfg)
         fprintf(stderr, "[sec] Failed to apply security policy\n");
         return -1;
     }
-
     printf("[sec] Security policy applied\n");
     return 0;
 }
 
-/**
- * Apply real-time setup if enabled.
- * rt_setup_init() stores the config, rt_setup_apply() activates it.
- */
 static int apply_realtime(const app_config_t *cfg)
 {
     if (!cfg->realtime_enabled) {
@@ -207,14 +231,39 @@ static int apply_realtime(const app_config_t *cfg)
         fprintf(stderr, "[rt] rt_setup_init failed\n");
         return -1;
     }
-
     if (rt_setup_apply() < 0) {
         fprintf(stderr, "[rt] rt_setup_apply failed\n");
         return -1;
     }
-
     printf("[rt] Real-time environment configured\n");
     return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  IO device init / start wrapper                                    */
+/* ------------------------------------------------------------------ */
+
+static int device_init_and_start(io_device_t *dev, const io_device_cfg_t *cfg)
+{
+    memset(dev, 0, sizeof(*dev));
+    printf("[io] Initialising IO device ...\n");
+    if (io_device_init(dev, cfg) < 0) {
+        fprintf(stderr, "[io] io_device_init failed\n");
+        return -1;
+    }
+    printf("[io] Starting IO device ...\n");
+    if (io_device_start(dev) < 0) {
+        fprintf(stderr, "[io] io_device_start failed\n");
+        io_device_cleanup(dev);
+        return -1;
+    }
+    return 0;
+}
+
+static void device_stop_and_cleanup(io_device_t *dev)
+{
+    io_device_stop(dev);
+    io_device_cleanup(dev);
 }
 
 /* ------------------------------------------------------------------ */
@@ -253,79 +302,137 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[cfg] Could not load '%s', using defaults\n",
                 config_path);
         app_config_default(&config);
-        strncpy(config.config_file, config_path,
-                sizeof(config.config_file) - 1);
+        snprintf(config.config_file, sizeof(config.config_file), "%s", config_path);
     }
 
-    /* Override log level when -v is given */
     if (verbose)
-        config.log_level = 3;  /* DEBUG */
+        config.log_level = 3;
 
-    /* ---- Validate ---- */
     if (app_config_validate(&config) < 0) {
         fprintf(stderr, "[cfg] Configuration validation failed\n");
         return EXIT_FAILURE;
     }
 
-    /* ---- Startup banner ---- */
+    /* ---- Startup ---- */
     print_banner(&config);
 
-    /* ---- Install signal handlers ---- */
     if (install_signal_handlers() < 0) {
         fprintf(stderr, "Failed to install signal handlers\n");
         return EXIT_FAILURE;
     }
 
-    /* ---- Apply network configuration ---- */
     if (apply_network(&config) < 0) {
         fprintf(stderr, "Network configuration failed\n");
         return EXIT_FAILURE;
     }
-
-    /* ---- Apply security policy ---- */
     if (apply_security(&config) < 0) {
         fprintf(stderr, "Security policy application failed\n");
         return EXIT_FAILURE;
     }
-
-    /* ---- Apply real-time setup ---- */
     if (apply_realtime(&config) < 0) {
         fprintf(stderr, "Real-time setup failed\n");
-        /* Non-fatal in mock mode: continue */
     }
 
-    /* ---- Initialise IO device ---- */
+    /* ============================================================ */
+    /*  Main loop with watchdog + auto-recovery                     */
+    /* ============================================================ */
+
     io_device_t device;
     memset(&device, 0, sizeof(device));
 
-    printf("[io] Initialising IO device ...\n");
-    if (io_device_init(&device, &config.device) < 0) {
-        fprintf(stderr, "[io] io_device_init failed\n");
+    int consecutive_errors = 0;
+    int recovery_attempts  = 0;
+    useconds_t backoff_us  = RECOVERY_BACKOFF_BASE;
+    unsigned long last_watchdog_ms = 0;
+
+    /* Initial device start */
+    if (device_init_and_start(&device, &config.device) < 0) {
+        fprintf(stderr, "[main] Initial device startup failed, exiting\n");
         goto cleanup_rt;
     }
-
-    /* ---- Start IO device ---- */
-    printf("[io] Starting IO device ...\n");
-    if (io_device_start(&device) < 0) {
-        fprintf(stderr, "[io] io_device_start failed\n");
-        goto cleanup_device;
-    }
+    watchdog_notify_ready();
 
     printf("[io] IO device running (state: %s)\n",
            io_device_state_str(io_device_get_state(&device)));
-    printf("[main] Entering main loop (tick=%u us). Press Ctrl+C to stop.\n",
-           config.device.tick_us);
+    printf("[main] Entering production loop (tick=%u us). "
+           "Watchdog=%s, Auto-recovery=%s\n",
+           config.device.tick_us,
+#ifdef HAVE_SYSTEMD
+           "enabled",
+#else
+           "not available",
+#endif
+           MAX_CONSECUTIVE_ERRORS > 0 ? "enabled" : "disabled");
 
-    /* ============================================================ */
-    /*  Main loop                                                    */
-    /* ============================================================ */
     while (g_running) {
+        /* ---- Periodic tick ---- */
         int rc = io_device_tick(&device);
-        if (rc < 0) {
-            fprintf(stderr, "[io] io_device_tick returned error (%d)\n", rc);
+        if (rc == 0) {
+            /* Success: reset error tracking */
+            consecutive_errors = 0;
+            recovery_attempts  = 0;
+            backoff_us         = RECOVERY_BACKOFF_BASE;
+        } else {
+            /* Error: increment and check threshold */
             device.error_count++;
-            /* Continue running; transient errors are expected */
+            consecutive_errors++;
+
+            fprintf(stderr, "[io] io_device_tick error (%d), "
+                    "consecutive=%d/%d\n",
+                    rc, consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+
+            if (MAX_CONSECUTIVE_ERRORS > 0 &&
+                consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+                /* Attempt recovery */
+                recovery_attempts++;
+                if (MAX_RECOVERY_ATTEMPTS > 0 &&
+                    recovery_attempts > MAX_RECOVERY_ATTEMPTS) {
+                    fprintf(stderr, "[main] Max recovery attempts (%d) "
+                            "reached, exiting\n", MAX_RECOVERY_ATTEMPTS);
+                    break;
+                }
+
+                fprintf(stderr, "[main] Starting recovery attempt %d "
+                        "(backoff %.3fs) ...\n",
+                        recovery_attempts, (double)backoff_us / 1000000.0);
+                watchdog_notify_status("recovering attempt %d",
+                                       recovery_attempts);
+
+                /* Stop and clean up */
+                device_stop_and_cleanup(&device);
+
+                /* Wait with backoff before retry */
+                usleep(backoff_us);
+
+                /* Exponential backoff (capped) */
+                backoff_us *= 2;
+                if (backoff_us > RECOVERY_BACKOFF_MAX)
+                    backoff_us = RECOVERY_BACKOFF_MAX;
+
+                /* Re-init and re-start */
+                if (device_init_and_start(&device, &config.device) == 0) {
+                    consecutive_errors = 0;
+                    printf("[main] Recovery successful\n");
+                    watchdog_notify_status("running");
+                } else {
+                    fprintf(stderr, "[main] Recovery attempt %d failed\n",
+                            recovery_attempts);
+                    /* Continue loop: will retry with longer backoff */
+                }
+            }
         }
+
+        /* ---- systemd watchdog ping (monotonic clock) ---- */
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        unsigned long now_ms = (unsigned long)(ts.tv_sec * 1000UL
+                                             + ts.tv_nsec / 1000000UL);
+        if (now_ms - last_watchdog_ms >= WATCHDOG_PING_MS) {
+            watchdog_notify();
+            last_watchdog_ms = now_ms;
+        }
+
+        /* ---- Sleep for tick interval ---- */
         usleep(config.device.tick_us);
     }
 
@@ -333,15 +440,12 @@ int main(int argc, char *argv[])
     /*  Shutdown                                                     */
     /* ============================================================ */
     printf("\n[main] Shutdown signal received, stopping ...\n");
+    watchdog_notify_stopping();
 
     printf("[io] Stopping IO device (cycles=%lu, errors=%lu) ...\n",
            (unsigned long)device.cycle_count,
            (unsigned long)device.error_count);
-    io_device_stop(&device);
-
-cleanup_device:
-    printf("[io] Cleaning up IO device ...\n");
-    io_device_cleanup(&device);
+    device_stop_and_cleanup(&device);
 
 cleanup_rt:
     if (config.realtime_enabled) {
@@ -349,6 +453,7 @@ cleanup_rt:
         rt_setup_restore();
     }
 
+    watchdog_notify_status("stopped");
     printf("[main] p-net IO Device Manager stopped. Goodbye.\n");
     return EXIT_SUCCESS;
 }

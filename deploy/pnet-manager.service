@@ -5,10 +5,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
 ExecStartPre=/usr/sbin/sysctl -p /etc/sysctl.d/99-pnet-tuning.conf
 ExecStart=/usr/local/bin/pnet-manager -c /etc/pnet-manager/config.conf
-Restart=on-failure
+Restart=always
 RestartSec=5
 WatchdogSec=30
 
@@ -22,7 +22,7 @@ PrivateTmp=true
 # Real-time settings
 LimitRTTIME=infinity
 LimitMEMLOCK=infinity
-CPUSchedulingPolicy=other
+CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=80
 Nice=-20
 
