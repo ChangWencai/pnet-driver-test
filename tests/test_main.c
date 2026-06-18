@@ -1,44 +1,29 @@
 /**
- * test_main.c - Main Test Runner
- *
- * Runs all test suites covering chapters 2-6 of the
- * "p-net Driver Installation: Profinet Protocol Deployment on Linux" document.
+ * test_main.c - Test runner for production architecture
  */
-
 #include "test_framework.h"
 
-/* Define the global test result tracker */
 test_result_t g_test_result = {0, 0, 0, 0, "", ""};
 
-/* External test suite runners */
-extern void run_chapter2_tests(void);
-extern void run_chapter3_tests(void);
-extern void run_chapter4_tests(void);
-extern void run_chapter5_tests(void);
-extern void run_chapter6_tests(void);
+extern void run_io_device_tests(void);
+extern void run_network_tests(void);
+extern void run_security_tests(void);
+extern void run_realtime_tests(void);
+extern void run_config_tests(void);
 
-int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
-
+int main(void) {
     test_reset();
-
-    printf("\n");
-    printf("========================================\n");
-    printf("  p-net Driver Test Suite\n");
-    printf("  Profinet Protocol on Linux\n");
-    printf("  Based on CSDN Document: 2sasavii7e\n");
+    printf("\n========================================\n");
+    printf("  p-net Manager Test Suite\n");
+    printf("  Production Architecture\n");
     printf("========================================\n");
 
-    /* Run all test suites */
-    run_chapter2_tests();  /* Driver Architecture & Protocol Core */
-    run_chapter3_tests();  /* Installation & Service Management */
-    run_chapter4_tests();  /* Network Configuration & Optimization */
-    run_chapter5_tests();  /* Security Mechanisms & Hardening */
-    run_chapter6_tests();  /* Practical Applications & Deployment */
+    run_io_device_tests();
+    run_network_tests();
+    run_security_tests();
+    run_realtime_tests();
+    run_config_tests();
 
-    /* Print summary */
     test_print_summary();
-
     return test_exit_code();
 }

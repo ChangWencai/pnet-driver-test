@@ -1,13 +1,17 @@
-# Build artifacts
+# Build
 build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
 *.o
-*.out
+*.a
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# IDE files
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -16,3 +20,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# p-net build artifacts
+vendor/p-net/build/

@@ -1,0 +1,30 @@
+[Unit]
+Description=p-net Profinet IO Device Manager
+Documentation=https://github.com/rtlabs-com/p-net
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/sysctl -p /etc/sysctl.d/99-pnet-tuning.conf
+ExecStart=/usr/local/bin/pnet-manager -c /etc/pnet-manager/config.conf
+Restart=on-failure
+RestartSec=5
+WatchdogSec=30
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pnet-manager /var/log/pnet-manager
+ProtectHome=true
+PrivateTmp=true
+
+# Real-time settings
+LimitRTTIME=infinity
+LimitMEMLOCK=infinity
+CPUSchedulingPolicy=other
+CPUSchedulingPriority=80
+Nice=-20
+
+[Install]
+WantedBy=multi-user.target
